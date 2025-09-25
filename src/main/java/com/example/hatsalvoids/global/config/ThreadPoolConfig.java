@@ -126,4 +126,10 @@ public class ThreadPoolConfig {
         );
         return executor;
     }
+
+    @Bean
+    public ForkJoinPool forkJoinPool() {
+        // 병렬성 수준(parallelism level)을 4로 설정
+        return new ForkJoinPool(4);
+    }
 }
