@@ -52,6 +52,12 @@ dependencies {
 
     // Crawl
     implementation 'org.jsoup:jsoup:1.21.1'
+
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'     // Actuator 엔드포인트[web:126][web:125]
+    implementation 'io.micrometer:micrometer-core'
+
+    implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'  // Thymeleaf 스타터[web:151]
+
 }
 
 tasks.named('test') {
