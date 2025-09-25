@@ -36,13 +36,11 @@ public class ExternalApiCaller {
             if (e instanceof ExternalApiException) {
                 throw (ExternalApiException) e;
             }
-            GlobalLogger.error(ExternalApiErrorCode.REQUEST_FAIL, ":", e.getMessage());
             throw new ExternalApiException(ExternalApiErrorCode.REQUEST_FAIL, e);
         }
     }
 
     public String get(String url){
-        GlobalLogger.info("ExternalApiCaller", "GET Request to URL: " + url);
         return execute(()-> restTemplate.getForObject(url, String.class));
     }
     public <R> R get(String url, Map<String, String> headers, Map<String, String> queryParams, ParameterizedTypeReference<R> responseType) {
@@ -70,18 +68,12 @@ public class ExternalApiCaller {
 
             URI finalUri = builder.build(true).toUri();
 
-            GlobalLogger.info("ExternalApiCaller", "GET Request to URL: " + finalUri);
-            GlobalLogger.info("Headers: " + headers);
-            GlobalLogger.info("Query Params: " + queryParams);  // raw 로그
-
             ResponseEntity<R> response = restTemplate.exchange(
                     finalUri,
                     HttpMethod.GET,
                     entity,
                     responseType
             );
-
-            GlobalLogger.info("Response: " + response.getBody());
 
             return response.getBody();
         });
@@ -112,10 +104,6 @@ public class ExternalApiCaller {
 
             URI finalUri = builder.build(true).toUri();
 
-            GlobalLogger.info("ExternalApiCaller", "GET Request to URL: " + finalUri);
-            GlobalLogger.info("Headers: " + headers);
-            GlobalLogger.info("Query Params: " + queryParams);  // raw 로그
-
             String body;
             try {
                 ResponseEntity<String> response = restTemplate.exchange(
@@ -128,7 +116,6 @@ public class ExternalApiCaller {
             } catch (HttpStatusCodeException httpEx) {
                 body = httpEx.getResponseBodyAsString();
             }
-            GlobalLogger.info("Response: " + body);
 
             if (body == null || body.isEmpty()) {
                 return null;
@@ -143,7 +130,6 @@ public class ExternalApiCaller {
                     if ("ERROR".equalsIgnoreCase(status)) {
                         String code = resp.path("error").path("code").asText("");
                         String text = resp.path("error").path("text").asText("");
-                        GlobalLogger.error(ExternalApiErrorCode.RESPONSE_ERROR, ": code=", code, ", text=", text);
                         throw new ExternalApiException(ExternalApiErrorCode.RESPONSE_ERROR, code, text);
                     }
                     // 정상인 경우 내부 response 노드를 요청 타입으로 매핑
@@ -190,8 +176,6 @@ public class ExternalApiCaller {
             } catch (HttpStatusCodeException httpEx) {
                 responseBody = httpEx.getResponseBodyAsString();
             }
-            GlobalLogger.info("Response: " + responseBody);
-
             if (responseBody == null || responseBody.isEmpty()) {
                 return null;
             }
