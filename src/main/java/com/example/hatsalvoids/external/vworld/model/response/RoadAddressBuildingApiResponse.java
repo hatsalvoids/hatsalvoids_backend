@@ -88,6 +88,13 @@ public class RoadAddressBuildingApiResponse {
         private GeometryDto geometry;
         private PropertiesDto properties;
         private String id;
+
+        public String getPnu(){
+            return getProperties().getBd_mgt_sn().substring(0, 19);
+        }
+        public List<List<List<List<Double>>>> getCoordinates(){
+            return getGeometry().getCoordinates();
+        }
     }
 
     @Getter
@@ -118,6 +125,25 @@ public class RoadAddressBuildingApiResponse {
         private String gu;
         private String rd_nm;
         private String buld_no;
+
+        public String getBuildingName() {
+            return buld_nm;
+        }
+
+        public String getAddress() {
+            StringBuilder sb = new StringBuilder();
+            if (sido != null) sb.append(sido).append(" ");
+            if (sigungu != null) sb.append(sigungu).append(" ");
+            if (gu != null) sb.append(gu).append(" ");
+            if (rd_nm != null) sb.append(rd_nm);
+            if (buld_no != null) sb.append(" ").append(buld_no);
+            return sb.toString().trim();
+        }
+    }
+
+
+    public List<FeatureDto> getFeatures(){
+        return getResult().getFeatureCollection().getFeatures();
     }
 }
 
