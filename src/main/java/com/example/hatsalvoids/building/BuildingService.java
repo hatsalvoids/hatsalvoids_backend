@@ -24,7 +24,6 @@ public class BuildingService {
     private final NaverBlogCrawler naverBlogCrawler;
     private final OpenAiService openAiService;
 
-    // TODO : 웹소켓으로 연결해서 GPT 요약 요청을 비동기로 처리하여 처리하는 족족 출력시키도록 수행
     public List<BuildingSpecificsByKeywordApiResponse.Documents> getBuildingSpecificsByKeyword(String x, String y, String radius, String keyword) {
 
         BuildingSpecificsByKeywordApiResponse apiResponse =
@@ -35,7 +34,6 @@ public class BuildingService {
 
     @Async
     public String getBuildingSummaryAsync(BuildingSpecificsByKeywordApiResponse.Documents buildingSpecific) throws ExecutionException, InterruptedException {
-        GlobalLogger.info("getBuildingSummaryAsync:",buildingSpecific);
         NaverBlogSearchResponse blogSearchResult =
                 naverApiCaller.getBlogSearchResult(buildingSpecific.getPlaceName());
 
@@ -46,7 +44,6 @@ public class BuildingService {
                 .forEach(item -> contextBuilder.append(naverBlogCrawler.blogCrawling(item.getLink())));
 
         String context = contextBuilder.toString().trim();
-        GlobalLogger.info("getBuildingSummaryAsync contextBuilder:", context);
 
         String template = """
                 # 프롬프트
