@@ -8,6 +8,8 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
+import java.util.Arrays;
+
 @RestControllerAdvice
 public class GlobalExceptionHandler {
     @ExceptionHandler(BaseException.class)
@@ -27,6 +29,7 @@ public class GlobalExceptionHandler {
 
     private static ResponseEntity<ErrorResponse> getErrorResponse(Exception e, GlobalErrorCode errorCode) {
         GlobalLogger.error(e.toString(), e.getMessage());
+        GlobalLogger.error(Arrays.toString(e.getStackTrace()));
 
         return ResponseEntity
                 .status(errorCode.getStatus())
@@ -35,6 +38,8 @@ public class GlobalExceptionHandler {
 
     private static ResponseEntity<ErrorResponse> getErrorResponse(Exception e, ErrorCode errorCode) {
         GlobalLogger.error(e.toString(), e.getMessage());
+        GlobalLogger.error(Arrays.toString(e.getStackTrace()));
+
 
         return ResponseEntity
                 .status(errorCode.getStatus())

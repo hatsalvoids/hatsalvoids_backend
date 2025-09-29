@@ -1,71 +1,129 @@
 package com.example.hatsalvoids.shade;
 
-
+import com.example.hatsalvoids.building.Building;
+import com.example.hatsalvoids.building.BuildingRepository;
+import com.example.hatsalvoids.building.model.FetchBuildingResponse;
 import com.example.hatsalvoids.external.vworld.VWorldApiCaller;
 import com.example.hatsalvoids.external.vworld.model.response.GISBuildingWFSApiResponse;
 import com.example.hatsalvoids.external.vworld.model.response.RoadAddressBuildingApiResponse;
+import com.example.hatsalvoids.global.GeometryUtils;
 import com.example.hatsalvoids.global.GlobalUtils;
+import com.example.hatsalvoids.global.utils.GlobalLogger;
 import com.example.hatsalvoids.shade.common.ShadeErrorCode;
 import com.example.hatsalvoids.shade.common.ShadeException;
+import com.example.hatsalvoids.shade.model.FetchShadeBuildingResponse;
 import com.example.hatsalvoids.shade.model.FetchShadeResponse;
 import com.example.hatsalvoids.shade.model.ShadeGeometryResult;
 import lombok.RequiredArgsConstructor;
 import net.e175.klaus.solarpositioning.AzimuthZenithAngle;
 import net.e175.klaus.solarpositioning.DeltaT;
 import net.e175.klaus.solarpositioning.SPA;
-import org.locationtech.jts.geom.Coordinate;
-import org.locationtech.jts.geom.Geometry;
-import org.locationtech.jts.geom.GeometryFactory;
-import org.locationtech.jts.geom.Point;
+import org.locationtech.jts.geom.*;
 import org.locationtech.jts.io.WKTWriter;
 import org.locationtech.proj4j.*;
 import org.springframework.stereotype.Service;
-
+import java.util.stream.Collectors;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ForkJoinPool;
 
 @Service
 @RequiredArgsConstructor
 public class ShadeService {
 
+    private final ForkJoinPool pool;
     private final VWorldApiCaller vWorldApiCaller;
+    private final BuildingRepository buildingRepository;
 
     // 그늘 구하기
-    public List<FetchShadeResponse> getShades(String latitude, String longitude, double radius,
-                                              String time, String zoneId) {
+    public List<FetchShadeResponse> fetchShadesByVWorldApi(String latitude, String longitude, double radius,
+            String time, String zoneId) {
+        return getFetchShadeResponsesByVWorldApi(latitude, longitude, radius, time, zoneId);
+    }
 
+    public List<FetchShadeBuildingResponse> fetchShadesByDatabase(String latitude, String longitude, double radius,
+            String time, String zoneId) {
+        return getFetchShadeResponsesByDatabase(latitude, longitude, radius, time, zoneId);
+    }
+
+    public List<FetchShadeBuildingResponse> fetchShadesByDatabaseParallel(String latitude, String longitude,
+            double radius,
+            String time, String zoneId) {
+        return getFetchShadeResponsesByDatabaseParallel(latitude, longitude, radius, time, zoneId);
+    }
+
+    private List<FetchShadeBuildingResponse> getFetchShadeResponsesByDatabaseParallel(String latitude, String longitude,
+            double radius, String time, String zoneId) {
+        ZonedDateTime when = GlobalUtils.getZonedDateTime(time, zoneId);
+        List<Building> buildings = buildingRepository.findByAround(Double.parseDouble(latitude),
+                Double.parseDouble(longitude), radius);
+
+        try {
+            return pool.submit(() -> buildings.stream().parallel().map(
+                    building -> {
+                        GlobalLogger.info("thread:", Thread.currentThread().getName());
+                        List<List<double[]>> rings = GeometryUtils
+                                .convertCoordinates2LinearRings(building.getBuildingPolygon().getCoordinates());
+
+                        ShadeGeometryResult shadeGeometryResult = computeShadeGeometryEpsg5186(rings,
+                                building.getHeight(), when, zoneId);
+
+                        return FetchShadeBuildingResponse.of(FetchBuildingResponse.from(building), shadeGeometryResult);
+                    }).collect(Collectors.toList())).get();
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException(e);
+        }
+    }
+
+    private List<FetchShadeBuildingResponse> getFetchShadeResponsesByDatabase(String latitude, String longitude,
+            double radius, String time, String zoneId) {
+        ZonedDateTime when = GlobalUtils.getZonedDateTime(time, zoneId);
+        List<Building> buildings = buildingRepository.findByAround(Double.parseDouble(latitude),
+                Double.parseDouble(longitude), radius);
+
+        return buildings.stream().map(
+                building -> {
+                    GlobalLogger.info("thread:", Thread.currentThread().getName());
+                    List<List<double[]>> rings = GeometryUtils
+                            .convertCoordinates2LinearRings(building.getBuildingPolygon().getCoordinates());
+
+                    ShadeGeometryResult shadeGeometryResult = computeShadeGeometryEpsg5186(rings, building.getHeight(),
+                            when, zoneId);
+                    return FetchShadeBuildingResponse.of(FetchBuildingResponse.from(building), shadeGeometryResult);
+                }).toList();
+    }
+
+    private List<FetchShadeResponse> getFetchShadeResponsesByVWorldApi(String latitude, String longitude, double radius,
+            String time, String zoneId) {
         ZonedDateTime when = GlobalUtils.getZonedDateTime(time, zoneId);
         List<FetchShadeResponse> results = new ArrayList<>();
 
-        Geometry bufferPolygon = getBufferPolygon(Double.parseDouble(latitude),
-                Double.parseDouble(longitude), radius);
-
-        // TODO : 데이터베이스에서 주변 반경 내 건물들의 정보가 있는지 확인하기 -> 기준을 어떻게?
-
-        String geometryType = "POLYGON";
-        String geometryFilter = geometryType + new WKTWriter().writeFormatted(bufferPolygon).substring(
-                geometryType.length() + 1,
-                bufferPolygon.toString().length());
-
         // 현재 위치에서 주변 반경 내 건물 리스트를 "도로명주소건물 API" 호출하여 가져오기
-        List<RoadAddressBuildingApiResponse> roadAddressBuildingApiResponses =
-                vWorldApiCaller.getRoadAddressBuildingAroundAll(geometryFilter);
+        List<RoadAddressBuildingApiResponse> roadAddressBuildingApiResponses = getRoadAddressBuildingApiResponses(
+                latitude, longitude, radius);
+
+        int outerCount = 0;
 
         for (RoadAddressBuildingApiResponse roadAddressBuildingApiResponse : roadAddressBuildingApiResponses) {
-            List<RoadAddressBuildingApiResponse.FeatureDto> features =
-                    roadAddressBuildingApiResponse.getResult().getFeatureCollection().getFeatures();
-
+            List<RoadAddressBuildingApiResponse.FeatureDto> features = roadAddressBuildingApiResponse.getFeatures();
+            int count = 0;
+            outerCount++;
             for (RoadAddressBuildingApiResponse.FeatureDto feature : features) {
+                GlobalLogger.info("처리 중인 건물 ID: ", count++, "/", features.size(), "총 응답 수: ", outerCount, "/",
+                        roadAddressBuildingApiResponses.size());
+                if (buildingRepository.existsByvWorldBuildingId(feature.getId())) {
+                    continue; // 이미 데이터베이스에 존재하는 건물은 건너뜀
+                }
 
                 // nestedGeometry 추출
-                List<List<List<List<Double>>>> nestedGeometry = feature.getGeometry().getCoordinates();
+                List<List<List<List<Double>>>> nestedGeometry = feature.getCoordinates();
 
-
-                //  API 호출 결과의 건축관리대장번호 앞자리 19자를 추출하여 pnu 추출
-                String pnu = feature.getProperties().getBd_mgt_sn().substring(0, 19);
+                // API 호출 결과의 건축관리대장번호 앞자리 19자를 추출하여 pnu 추출
+                String pnu = feature.getPnu();
 
                 // pnu로 "GIS건물통합WFS조회 API" 호출해서 건축물 높이 가져오기
                 GISBuildingWFSApiResponse gisBuildingWFSApiResponse = vWorldApiCaller.getGISBuildingWFS(pnu);
@@ -74,18 +132,48 @@ public class ShadeService {
                     continue; // 건물 정보가 없으면 다음 건물로
                 }
 
-                Double buildingHeightM = gisBuildingWFSApiResponse.getFeatures().get(0).getProperties().getHg();
+                Double buildingHeightM = gisBuildingWFSApiResponse.getHeight();
 
                 // 각 건물에 대해 그늘 연산 수행
                 List<List<double[]>> rings = extractLinearRings(nestedGeometry);
                 ShadeGeometryResult result = computeShadeGeometryEpsg5186(rings, buildingHeightM, when, zoneId);
 
+                // 빌딩이 없다면 데이터베이스에 생성하기
+                createIfBuildingNotExists(feature, pnu, buildingHeightM, rings);
+
                 FetchShadeResponse response = FetchShadeResponse.of(feature.getProperties(), result);
                 results.add(response);
             }
         }
-
         return results;
+    }
+
+    private void createIfBuildingNotExists(RoadAddressBuildingApiResponse.FeatureDto feature, String pnu,
+            Double buildingHeightM, List<List<double[]>> rings) {
+        if (!buildingRepository.existsByvWorldBuildingId(feature.getId())) {
+            buildingRepository.save(Building.builder()
+                    .pnu(pnu)
+                    .height(buildingHeightM)
+                    .buildingName(feature.getProperties().getBuildingName())
+                    .roadAddress(feature.getProperties().getAddress())
+                    .buildingPolygon(GeometryUtils.createPolygonFromRings(rings))
+                    .vWorldBuildingId(feature.getId())
+                    .bdMgtSn(feature.getProperties().getBd_mgt_sn())
+                    .build());
+        }
+    }
+
+    private List<RoadAddressBuildingApiResponse> getRoadAddressBuildingApiResponses(String latitude, String longitude,
+            double radius) {
+        Geometry bufferPolygon = getBufferPolygon(Double.parseDouble(latitude),
+                Double.parseDouble(longitude), radius);
+
+        String geometryType = "POLYGON";
+        String geometryFilter = geometryType + new WKTWriter().writeFormatted(bufferPolygon).substring(
+                geometryType.length() + 1,
+                bufferPolygon.toString().length());
+
+        return vWorldApiCaller.getRoadAddressBuildingAroundAll(geometryFilter);
     }
 
     public Geometry getBufferPolygon(double latitude, double longitude, double radiusMeters) {
@@ -132,7 +220,7 @@ public class ShadeService {
                     List<?> pt = (List<?>) p;
                     double x = toDouble(pt.get(0));
                     double y = toDouble(pt.get(1));
-                    ring.add(new double[]{x, y});
+                    ring.add(new double[] { x, y });
                 }
                 rings.add(ring);
                 return;
@@ -144,7 +232,8 @@ public class ShadeService {
     }
 
     private boolean isRing(List<?> candidate) {
-        if (candidate.isEmpty()) return false;
+        if (candidate.isEmpty())
+            return false;
         for (Object p : candidate) {
             if (!(p instanceof List<?> pt && pt.size() == 2 &&
                     pt.get(0) instanceof Number && pt.get(1) instanceof Number)) {
@@ -167,13 +256,12 @@ public class ShadeService {
             sx += p[0];
             sy += p[1];
         }
-        return new double[]{sx / n, sy / n};
+        return new double[] { sx / n, sy / n };
     }
 
     // EPSG:5186 -> EPSG:4326 좌표 변환 후 태양 고도/방위 계산 (SPA)
     private double[] getSolarAnglesForEpsg5186Point(double x5186, double y5186, ZonedDateTime when, String zoneId) {
-        ZonedDateTime whenLocal = when.withZoneSameInstant(ZoneId.of(zoneId));
-        ZonedDateTime whenKst = whenLocal.withZoneSameInstant(ZoneId.of("Asia/Seoul"));
+        ZonedDateTime whenKst = when.withZoneSameInstant(ZoneId.of(zoneId));
 
         CRSFactory crsFactory = new CRSFactory();
         CoordinateReferenceSystem src = crsFactory.createFromName("EPSG:5186");
@@ -194,15 +282,15 @@ public class ShadeService {
                 0.0,
                 deltaT,
                 1010.0,
-                11.0
-        );
+                11.0);
         double azimuthDeg = position.getAzimuth();
         double altitudeDeg = 90.0 - position.getZenithAngle();
-        return new double[]{altitudeDeg, azimuthDeg};
+        return new double[] { altitudeDeg, azimuthDeg };
     }
 
     // 그림자 벡터 계산 (degree 입력)
-    private double[] computeShadeOffset(double heightM, double altitudeDeg, double azimuthDeg, double minAltitudeDeg, double maxLengthM) {
+    private double[] computeShadeOffset(double heightM, double altitudeDeg, double azimuthDeg, double minAltitudeDeg,
+            double maxLengthM) {
         double useAlt = Math.max(altitudeDeg, minAltitudeDeg);
         double length = useAlt > 0.0 ? heightM / Math.tan(Math.toRadians(useAlt)) : maxLengthM;
         length = Math.min(length, maxLengthM);
@@ -210,18 +298,19 @@ public class ShadeService {
         double rad = Math.toRadians(shadeAz);
         double dx = length * Math.sin(rad);
         double dy = length * Math.cos(rad);
-        return new double[]{dx, dy};
+        return new double[] { dx, dy };
     }
 
     private List<double[]> shiftRingXY(List<double[]> ring, double dx, double dy) {
         List<double[]> shifted = new ArrayList<>(ring.size());
         for (double[] p : ring) {
-            shifted.add(new double[]{p[0] + dx, p[1] + dy});
+            shifted.add(new double[] { p[0] + dx, p[1] + dy });
         }
         return shifted;
     }
 
-    private ShadeGeometryResult computeShadeGeometryEpsg5186(List<List<double[]>> rings, double heightM, ZonedDateTime when, String zoneId) {
+    private ShadeGeometryResult computeShadeGeometryEpsg5186(List<List<double[]>> rings, double heightM,
+            ZonedDateTime when, String zoneId) {
         if (rings.isEmpty()) {
             throw new ShadeException(ShadeErrorCode.POINT_NOT_FOUND);
         }
@@ -230,7 +319,7 @@ public class ShadeService {
         double altitude = solar[0];
         double azimuth = solar[1];
         if (altitude <= 0.0) {
-            throw new ShadeException(ShadeErrorCode.SOLAR_IS_UNDER);
+            throw new ShadeException(ShadeErrorCode.SOLAR_IS_UNDER, when);
         }
         double[] offset = computeShadeOffset(heightM, altitude, azimuth, 1.0, 10000.0);
         double dx = offset[0];

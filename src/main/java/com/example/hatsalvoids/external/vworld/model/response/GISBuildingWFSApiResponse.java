@@ -85,7 +85,7 @@ public class GISBuildingWFSApiResponse {
         public Double getHg(){
             double DEFAULT_HEIGHT = 8.0; // 기본 건물 높이 (미터 단위)
 
-            if(hg == 0.0){
+            if(hg == null || hg == 0.0){
                 return DEFAULT_HEIGHT;
             }
 
@@ -110,6 +110,11 @@ public class GISBuildingWFSApiResponse {
     @Builder
     public static class CrsProperties {
         private String name; // urn:ogc:def:crs:EPSG::5186
+    }
+
+
+    public Double getHeight(){
+        return getFeatures().get(0).getProperties().getHg();
     }
 }
 

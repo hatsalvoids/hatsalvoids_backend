@@ -5,6 +5,7 @@ import org.springframework.context.annotation.Configuration;
 
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import com.example.hatsalvoids.global.utils.GlobalLogger;
 
 @Configuration
 public class ThreadPoolConfig {
@@ -46,8 +47,7 @@ public class ThreadPoolConfig {
                 keepAliveTime, TimeUnit.SECONDS,
                 workQueue,
                 threadFactory,
-                rejectionHandler
-        );
+                rejectionHandler);
 
         // 필요 시 코어 스레드 미리 기동
         // executor.prestartAllCoreThreads();
@@ -74,8 +74,7 @@ public class ThreadPoolConfig {
                 keepAliveTime, TimeUnit.SECONDS,
                 workQueue,
                 threadFactory,
-                rejectionHandler
-        );
+                rejectionHandler);
 
         // 필요 시 코어 스레드 미리 기동
         // executor.prestartAllCoreThreads();
@@ -99,8 +98,7 @@ public class ThreadPoolConfig {
                 0L, TimeUnit.SECONDS,
                 workQueue,
                 namedThreadFactory("batch-worker", false),
-                new ThreadPoolExecutor.AbortPolicy()
-        );
+                new ThreadPoolExecutor.AbortPolicy());
         return executor;
     }
 
@@ -122,8 +120,13 @@ public class ThreadPoolConfig {
                 60L, TimeUnit.SECONDS,
                 new LinkedBlockingQueue<>(500),
                 namedThreadFactory("io-worker", false),
-                new ThreadPoolExecutor.CallerRunsPolicy()
-        );
+                new ThreadPoolExecutor.CallerRunsPolicy());
         return executor;
+    }
+
+    @Bean
+    public ForkJoinPool forkJoinPool() {
+        GlobalLogger.info("forkJoinPool registered: ", Runtime.getRuntime().availableProcessors());
+        return new ForkJoinPool(Runtime.getRuntime().availableProcessors());
     }
 }

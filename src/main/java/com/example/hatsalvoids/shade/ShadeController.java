@@ -1,7 +1,9 @@
 package com.example.hatsalvoids.shade;
 
 
+import com.example.hatsalvoids.global.success.PaginatedResponse;
 import com.example.hatsalvoids.global.success.SuccessResponse;
+import com.example.hatsalvoids.shade.model.FetchShadeBuildingResponse;
 import com.example.hatsalvoids.shade.model.FetchShadeResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
@@ -15,16 +17,65 @@ import java.util.List;
 public class ShadeController {
     private final ShadeService shadeService;
 
-    @CrossOrigin(origins = {"http://127.0.0.1:5500", "http://localhost:5500"})
-    @GetMapping
-    public ResponseEntity<SuccessResponse<List<FetchShadeResponse>>> getShades(@RequestParam String latitude,
-                                                                               @RequestParam String longitude,
-                                                                               @RequestParam double radius,
-                                                                               @RequestParam String time,
-                                                                               @RequestParam String zoneId) {
+    @CrossOrigin(origins = {"http://127.0.0.1:3000", "http://localhost:3000"})
+    @GetMapping("/external-api")
+    public ResponseEntity<SuccessResponse<PaginatedResponse<FetchShadeResponse>>> getShadesByVWorldApi(@RequestParam String latitude,
+                                                                                                       @RequestParam String longitude,
+                                                                                                       @RequestParam double radius,
+                                                                                                       @RequestParam String time,
+                                                                                                       @RequestParam String zoneId,
+                                                                                                       @RequestParam(defaultValue = "0") int page,
+                                                                                                       @RequestParam(defaultValue = "150") int size
+
+    ) {
+
+        List<FetchShadeResponse> response = shadeService.fetchShadesByVWorldApi(latitude, longitude, radius, time, zoneId);
+        PaginatedResponse<FetchShadeResponse> pageResponse =
+                PaginatedResponse.of(size, page, response.size(), (response.size() + size - 1) / size, response);
+
+
         return ResponseEntity
                 .status(ShadeSuccessCode.SHADE_FETCHED.getStatus())
-                .body(SuccessResponse.of(ShadeSuccessCode.SHADE_FETCHED,
-                        shadeService.getShades(latitude, longitude, radius, time, zoneId)));
+                .body(SuccessResponse.of(ShadeSuccessCode.SHADE_FETCHED));
+    }
+
+    @CrossOrigin(origins = {"http://127.0.0.1:3000", "http://localhost:3000"})
+    @GetMapping("/database")
+    public ResponseEntity<SuccessResponse<PaginatedResponse<FetchShadeBuildingResponse>>> getShadesByDatabase(@RequestParam String latitude,
+                                                                                                              @RequestParam String longitude,
+                                                                                                              @RequestParam double radius,
+                                                                                                              @RequestParam String time,
+                                                                                                              @RequestParam String zoneId,
+                                                                                                              @RequestParam(defaultValue = "0") int page,
+                                                                                                              @RequestParam(defaultValue = "150") int size
+    ) {
+
+        List<FetchShadeBuildingResponse> response = shadeService.fetchShadesByDatabase(latitude, longitude, radius, time, zoneId);
+        PaginatedResponse<FetchShadeBuildingResponse> pageResponse =
+                PaginatedResponse.of(size, page, response.size(), (response.size() + size - 1) / size, response);
+
+        return ResponseEntity
+                .status(ShadeSuccessCode.SHADE_FETCHED.getStatus())
+                .body(SuccessResponse.of(ShadeSuccessCode.SHADE_FETCHED, pageResponse));
+    }
+
+    @CrossOrigin(origins = {"http://127.0.0.1:3000", "http://localhost:3000"})
+    @GetMapping("/database/parallel")
+    public ResponseEntity<SuccessResponse<PaginatedResponse<FetchShadeBuildingResponse>>> getShadesByDatabaseParallel(@RequestParam String latitude,
+                                                                                                                      @RequestParam String longitude,
+                                                                                                                      @RequestParam double radius,
+                                                                                                                      @RequestParam String time,
+                                                                                                                      @RequestParam String zoneId,
+                                                                                                                      @RequestParam(defaultValue = "0") int page,
+                                                                                                                      @RequestParam(defaultValue = "150") int size
+    ) {
+
+        List<FetchShadeBuildingResponse> response = shadeService.fetchShadesByDatabaseParallel(latitude, longitude, radius, time, zoneId);
+        PaginatedResponse<FetchShadeBuildingResponse> pageResponse =
+                PaginatedResponse.of(size, page, response.size(), (response.size() + size - 1) / size, response);
+
+        return ResponseEntity
+                .status(ShadeSuccessCode.SHADE_FETCHED.getStatus())
+                .body(SuccessResponse.of(ShadeSuccessCode.SHADE_FETCHED, pageResponse));
     }
 }
