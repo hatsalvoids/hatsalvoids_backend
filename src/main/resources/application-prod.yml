@@ -1,0 +1,36 @@
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+cors:
+  allowed-origins: ${CORS_ALLOWED_ORIGINS:*}
+  allowed-methods: ${CORS_ALLOWED_METHODS:GET,POST,PUT,DELETE,OPTIONS}
+  max-age: ${CORS_MAX_AGE:3600}
+
+management:
+  endpoints:
+    web:
+      base-path: /actuator
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: never
+
+logging:
+  file:
+    path: logs
+  files:
+    app: logs/app.log
+    error: logs/error.log
+
+security:
+  admin:
+    token: ${ADMIN_TOKEN:}
+    token-secret: ${ADMIN_TOKEN_SECRET:}
+
+rate-limit:
+  shade:
+    max-requests: 3
+    window-seconds: 10
