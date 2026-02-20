@@ -55,33 +55,6 @@ public class ThreadPoolConfig {
         return executor;
     }
 
-    @Bean(destroyMethod = "shutdown")
-    public ThreadPoolExecutor openAiAsyncExecutor() {
-        int cores = Runtime.getRuntime().availableProcessors();
-        int corePoolSize = Math.max(2, cores * 2);
-        int maximumPoolSize = corePoolSize * 2;
-        long keepAliveTime = 60L;
-
-        BlockingQueue<Runnable> workQueue = new LinkedBlockingQueue<>(200);
-
-        ThreadFactory threadFactory = namedThreadFactory("general-worker", false);
-
-        RejectedExecutionHandler rejectionHandler = new ThreadPoolExecutor.CallerRunsPolicy();
-
-        ThreadPoolExecutor executor = new ThreadPoolExecutor(
-                corePoolSize,
-                maximumPoolSize,
-                keepAliveTime, TimeUnit.SECONDS,
-                workQueue,
-                threadFactory,
-                rejectionHandler);
-
-        // 필요 시 코어 스레드 미리 기동
-        // executor.prestartAllCoreThreads();
-
-        return executor;
-    }
-
     /**
      * 배치/CPU 바운드 태스크 전용
      * - core=max=코어 수 (컨텍스트 스위칭 최소화)
