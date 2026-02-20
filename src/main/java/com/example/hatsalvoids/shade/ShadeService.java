@@ -22,6 +22,8 @@ import org.locationtech.jts.geom.*;
 import org.locationtech.jts.io.WKTWriter;
 import org.locationtech.proj4j.*;
 import org.springframework.stereotype.Service;
+
+import java.time.LocalDateTime;
 import java.util.stream.Collectors;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -75,6 +77,14 @@ public class ShadeService {
                         return FetchShadeBuildingResponse.of(FetchBuildingResponse.from(building), shadeGeometryResult);
                     }).collect(Collectors.toList())).get();
         } catch (InterruptedException | ExecutionException e) {
+            Throwable cause = e.getCause();
+            if (cause instanceof com.example.hatsalvoids.shade.common.ShadeException) {
+                // 메시지에서 "com.example.hatsalvoids.shade.common.ShadeException:" 이후의 부분 추출
+                String msg = cause.getMessage();
+                String prefix = "com.example.hatsalvoids.shade.common.ShadeException:";
+                String errorMsg = msg != null && msg.startsWith(prefix) ? msg.substring(prefix.length()).trim() : msg;
+                throw new ShadeException(ShadeErrorCode.SHADE_COMMON_ERROR, errorMsg);
+            }
             throw new RuntimeException(e);
         }
     }
@@ -319,7 +329,27 @@ public class ShadeService {
         double altitude = solar[0];
         double azimuth = solar[1];
         if (altitude <= 0.0) {
-            throw new ShadeException(ShadeErrorCode.SOLAR_IS_UNDER, when);
+            // 사용자가 그늘을 구할 수 있는 마지막 시간을 계산
+            ZonedDateTime testWhen = when;
+            double testAlt = altitude;
+            ZonedDateTime lastSolarTime = when;
+            int stepMinutes = -10; // 10분씩 거꾸로 가며 찾기
+            int maxLookbackMinutes = 24 * 60;
+            for (int i = 0; i < maxLookbackMinutes; i += Math.abs(stepMinutes)) {
+                testWhen = testWhen.plusMinutes(stepMinutes);
+                double[] testSolar = getSolarAnglesForEpsg5186Point(centroid[0], centroid[1], testWhen, zoneId);
+                testAlt = testSolar[0];
+                if (testAlt > 0.0) {
+                    lastSolarTime = testWhen;
+                    break;
+                }
+            }
+            // when과 lastAvailableTime 모두 Asia/Seoul로 변환
+            ZoneId koreaZone = ZoneId.of("Asia/Seoul");
+            LocalDateTime koreaTime = when.withZoneSameInstant(koreaZone).toLocalDateTime();
+            LocalDateTime lastAvailableTime = lastSolarTime.withZoneSameInstant(koreaZone).toLocalDateTime();
+
+            throw new ShadeException(ShadeErrorCode.SOLAR_IS_UNDER, koreaTime, lastAvailableTime);
         }
         double[] offset = computeShadeOffset(heightM, altitude, azimuth, 1.0, 10000.0);
         double dx = offset[0];

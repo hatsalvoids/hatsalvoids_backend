@@ -9,6 +9,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import jakarta.servlet.http.HttpServletRequest;
 import java.util.List;
 
 @RestController
@@ -16,18 +17,21 @@ import java.util.List;
 @RequiredArgsConstructor
 public class ShadeController {
     private final ShadeService shadeService;
+    private final ShadeRateLimitService shadeRateLimitService;
 
-    @CrossOrigin(origins = {"http://127.0.0.1:3000", "http://localhost:3000"})
-    @GetMapping("/external-api")
+    @CrossOrigin(origins = {"http://127.0.0.1:3001", "http://localhost:3001"})
+    @GetMapping("/add-buildings")
     public ResponseEntity<SuccessResponse<PaginatedResponse<FetchShadeResponse>>> getShadesByVWorldApi(@RequestParam String latitude,
                                                                                                        @RequestParam String longitude,
                                                                                                        @RequestParam double radius,
                                                                                                        @RequestParam String time,
                                                                                                        @RequestParam String zoneId,
                                                                                                        @RequestParam(defaultValue = "0") int page,
-                                                                                                       @RequestParam(defaultValue = "150") int size
+                                                                                                       @RequestParam(defaultValue = "150") int size,
+                                                                                                       HttpServletRequest request
 
     ) {
+        shadeRateLimitService.validateShadeRequest(request);
 
         List<FetchShadeResponse> response = shadeService.fetchShadesByVWorldApi(latitude, longitude, radius, time, zoneId);
         PaginatedResponse<FetchShadeResponse> pageResponse =
@@ -39,7 +43,7 @@ public class ShadeController {
                 .body(SuccessResponse.of(ShadeSuccessCode.SHADE_FETCHED));
     }
 
-    @CrossOrigin(origins = {"http://127.0.0.1:3000", "http://localhost:3000"})
+    @CrossOrigin(origins = {"http://127.0.0.1:3001", "http://localhost:3001"})
     @GetMapping("/database")
     public ResponseEntity<SuccessResponse<PaginatedResponse<FetchShadeBuildingResponse>>> getShadesByDatabase(@RequestParam String latitude,
                                                                                                               @RequestParam String longitude,
@@ -47,8 +51,10 @@ public class ShadeController {
                                                                                                               @RequestParam String time,
                                                                                                               @RequestParam String zoneId,
                                                                                                               @RequestParam(defaultValue = "0") int page,
-                                                                                                              @RequestParam(defaultValue = "150") int size
+                                                                                                              @RequestParam(defaultValue = "150") int size,
+                                                                                                              HttpServletRequest request
     ) {
+        shadeRateLimitService.validateShadeRequest(request);
 
         List<FetchShadeBuildingResponse> response = shadeService.fetchShadesByDatabase(latitude, longitude, radius, time, zoneId);
         PaginatedResponse<FetchShadeBuildingResponse> pageResponse =
@@ -59,16 +65,18 @@ public class ShadeController {
                 .body(SuccessResponse.of(ShadeSuccessCode.SHADE_FETCHED, pageResponse));
     }
 
-    @CrossOrigin(origins = {"http://127.0.0.1:3000", "http://localhost:3000"})
-    @GetMapping("/database/parallel")
+    @CrossOrigin(origins = {"http://127.0.0.1:3001", "http://localhost:3001"})
+    @GetMapping
     public ResponseEntity<SuccessResponse<PaginatedResponse<FetchShadeBuildingResponse>>> getShadesByDatabaseParallel(@RequestParam String latitude,
                                                                                                                       @RequestParam String longitude,
                                                                                                                       @RequestParam double radius,
                                                                                                                       @RequestParam String time,
                                                                                                                       @RequestParam String zoneId,
                                                                                                                       @RequestParam(defaultValue = "0") int page,
-                                                                                                                      @RequestParam(defaultValue = "150") int size
+                                                                                                                      @RequestParam(defaultValue = "150") int size,
+                                                                                                                      HttpServletRequest request
     ) {
+        shadeRateLimitService.validateShadeRequest(request);
 
         List<FetchShadeBuildingResponse> response = shadeService.fetchShadesByDatabaseParallel(latitude, longitude, radius, time, zoneId);
         PaginatedResponse<FetchShadeBuildingResponse> pageResponse =
